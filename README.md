@@ -1,1 +1,1 @@
-# Working_with_PostgreSQL_from_Python
+# Working with PostgreSQL from Python
