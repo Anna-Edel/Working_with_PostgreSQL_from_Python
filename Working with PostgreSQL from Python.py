@@ -24,88 +24,118 @@ def create_db(conn):
         conn.commit()
 
 
-def add_client(conn, name, surname, e_mail, phones=None):
-    conn.execute("""
+def add_client(conn, name, surname, e_mail):
+    with conn.cursor() as cur:
+        cur.execute("""
             INSERT INTO Client(name, surname, e_mail)
             VALUES(%s, %s, %s)
             RETURNING client_id, name, surname, e_mail;
             """, (name, surname, e_mail))
-    return cur.fetchall()
+        return cur.fetchall()
 
 
 def add_phone(conn, client_id, number):
-    conn.execute("""
-    INSERT INTO Phone (client_id, number)
-    VALUES (%s,%s)
-    RETURNING client_id, number;
-    """, (client_id, number))
-    return cur.fetchall()
+    with conn.cursor() as cur:
+        cur.execute("""
+            INSERT INTO Phone (client_id, number)
+            VALUES (%s,%s)
+            RETURNING client_id, number;
+            """, (client_id, number))
+        return cur.fetchall()
 
 
-def change_client(conn, client_id, name=None, surname=None, e_mail=None, number=None):
-    conn.execute("""
-            UPDATE Client
-            SET name=%s, surname=%s, e_mail=%s
-            WHERE client_id=%s
-            RETURNING client_id, name, surname, e_mail;
-            """, (name, surname, e_mail, client_id))
-    return cur.fetchall()
+def change_client(conn, client_id, name=None, surname=None, e_mail=None):
+    with conn.cursor() as cur:
+        update_fields = []
+        if name is not None:
+            update_fields.append(f"name = '{name}'")
+        if surname is not None:
+            update_fields.append(f"surname = '{surname}'")
+        if e_mail is not None:
+            update_fields.append(f"e_mail = '{e_mail}'")
+
+        if len(update_fields) > 0:
+            update_query = "UPDATE Client SET " + ", ".join(
+                update_fields) + f" WHERE client_id = {client_id} RETURNING client_id, name, surname, e_mail;"
+            cur.execute(update_query)
+            return cur.fetchall()
+        else:
+            return None
 
 
 def change_phone(conn, client_id, number):
-    conn.execute("""
+    with conn.cursor() as cur:
+        cur.execute("""
             UPDATE Phone
             SET number=%s
             WHERE client_id=%s
             RETURNING client_id, number;
             """, (number, client_id))
-    return cur.fetchall()
+        return cur.fetchall()
 
 
-def delete_phone(conn, client_id, number=None):
-    conn.execute("""
+def delete_phone(conn, client_id):
+    with conn.cursor() as cur:
+        cur.execute("""
             DELETE FROM Phone
             WHERE client_id=%s
+            RETURNING client_id, number;
             """, (client_id,))
-    conn.execute("""
-            SELECT * FROM Phone
-            """, (number, client_id))
-    return cur.fetchall()
+        return cur.fetchall()
 
 
-def delete_client(conn, client_id, name=None, surname=None, e_mail=None, number=None):
-    conn.execute("""
+def delete_client(conn, client_id):
+    with conn.cursor() as cur:
+        cur.execute("""
             DELETE FROM Client
             WHERE client_id=%s
+            RETURNING client_id, name, surname, e_mail;
             """, (client_id,))
-    conn.execute("""
-            SELECT * FROM Client
-            """, (name, surname, e_mail, client_id))
-    return cur.fetchall()
+        return cur.fetchall()
 
 
 def find_client(conn, name=None, surname=None, e_mail=None, number=None):
-    conn.execute("""
-            SELECT c.name, c.surname, c.e_mail, p.number FROM Client AS c
+    with conn.cursor() as cur:
+        query = """
+            SELECT c.name, c.surname, c.e_mail, p.number 
+            FROM Client AS c
             LEFT JOIN Phone AS p ON c.client_id = p.client_id
-            WHERE c.name=%s OR c.surname=%s OR c.e_mail=%s OR p.number=%s;
-            """, (name, surname, e_mail, number))
-    return cur.fetchall()
+            WHERE 1=1
+            """
+        query_params = []
+
+        if name is not None:
+            query += "AND c.name = %s "
+            query_params.append(name)
+        if surname is not None:
+            query += "AND c.surname = %s "
+            query_params.append(surname)
+        if e_mail is not None:
+            query += "AND c.e_mail = %s "
+            query_params.append(e_mail)
+        if number is not None:
+            query += "AND p.number = %s "
+            query_params.append(number)
+
+        cur.execute(query, query_params)
+        return cur.fetchall()
 
 
-conn = psycopg2.connect(database="clients", user="postgres", password="041953")
+if __name__ == "__main__":
+    conn = psycopg2.connect(database="clients", user="postgres", password="041953")
+    create_db(conn)
 
-create_db(conn)
-with conn.cursor() as cur:
-    print(add_client(cur, 'Peter', 'Peterson', 'pet@mail.ru'))
-    print(add_client(cur, 'Nika', 'Ivanova', 'ivan@gmail.com'))
-    print(add_client(cur, 'Alex', 'Groten', 'joni@gmail.com'))
-    print(add_phone(cur, '1', '89508721563'))
-    print(add_phone(cur, '2', '89203215477'))
-    print(add_phone(cur, '3', '89103628791'))
-    print(change_client(cur, '1', 'Peterson', 'Peter', 'pet@mail.ru'))
-    print(change_phone(cur, '1', '89622567483'))
-    print(delete_phone(cur, '3'))
-    print(delete_client(cur, '3'))
-    print(find_client(cur, 'Nika'))
+    print(add_client(conn, 'Peter', 'Peterson', 'pet@mail.ru'))
+    print(add_client(conn, 'Nika', 'Ivanova', 'ivan@gmail.com'))
+    print(add_client(conn, 'Alex', 'Groten', 'joni@gmail.com'))
+    print(add_phone(conn, 1, '89508721563'))
+    print(add_phone(conn, 2, '89203215477'))
+    print(add_phone(conn, 3, '89103628791'))
+    print(change_client(conn, 1, surname='Peterson', name='Peter'))
+    print(change_phone(conn, 1, '89622567483'))
+    print(delete_phone(conn, 3))
+    print(delete_client(conn, 3))
+    print(find_client(conn, name='Nika'))
+
     conn.commit()
+    conn.close()
